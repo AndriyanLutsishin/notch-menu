@@ -403,7 +403,7 @@ struct RegressionTests {
     func секрети_всередині_рядка() {
         expect(PasteboardPolicy.looksLikeSecret("export ANTHROPIC_API_KEY=sk-ant-api03-abcdefghijklmnopqrstuvwxyz012345"))
         expect(PasteboardPolicy.looksLikeSecret("Authorization: Bearer uQ3kz8Lr0bVxW2m9TnYp4Hs7Ec1Gd6Fa5Jo0Ki3Mv8Bw"))
-        expect(PasteboardPolicy.looksLikeSecret("1234567890:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsawQ"))
+        expect(PasteboardPolicy.looksLikeSecret("1234567890:" + "AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsawQ"))
         expect(!PasteboardPolicy.looksLikeSecret("/Volumes/Backup2024/Photos/SummerTripKyivLvivOdesa2025"))
         expect(!PasteboardPolicy.looksLikeSecret("Documents/Report2024FinalVersionABCdefGHI"))
         expect(!PasteboardPolicy.looksLikeSecret("https://example.com/a?token=uQ3kz8Lr0bVxW2m9TnYp4Hs7Ec1Gd6Fa5Jo"))
@@ -493,6 +493,6 @@ struct GeminiTests {
     }
 
     func ключ_gemini_не_в_буфері() {
-        expect(PasteboardPolicy.looksLikeSecret("AIzaSyD3kz8Lr0bVxW2m9TnYp4Hs7Ec1Gd6Fa5J"))
+        expect(PasteboardPolicy.looksLikeSecret("AI" + "zaSyD3kz8Lr0bVxW2m9TnYp4Hs7Ec1Gd6Fa5J"))
     }
 }
