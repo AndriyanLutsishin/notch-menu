@@ -1,0 +1,14 @@
+# Збірка й архіви
+build/
+dist/
+.build/
+*.swiftsourceinfo
+# Ключі й сертифікати — ніколи в репозиторій
+*.p12
+*.key
+*.cer
+*.certSigningRequest
+*.pem
+# macOS
+.DS_Store
+._*

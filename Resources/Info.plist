@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.andriyan.notchmenu</string>
+    <key>CFBundleName</key>
+    <string>NotchMenu</string>
+    <key>CFBundleDisplayName</key>
+    <string>Notch Menu</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleExecutable</key>
+    <string>NotchMenu</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>uk</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <!-- Без іконки в Dock і без меню програми -->
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Notch Menu показує трек, обкладинку й кнопки керування для «Музики», а також назву треку з вкладки YouTube Music у Chrome.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Notch Menu показує біля чубчика найближчу подію й розклад на тиждень. Лише читання.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>Notch Menu показує останні файли з «Завантажень» на вкладці «Викачане». Лише перегляд.</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>© 2026 Andriyan Lutsishin</string>
+</dict>
+</plist>
