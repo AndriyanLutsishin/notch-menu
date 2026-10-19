@@ -1,7 +1,7 @@
 import AppKit
 import NotchCore
 
-/// «Зараз грає»: Apple Music або YouTube Music (у Google Chrome) — на вибір.
+/// «Зараз грає»: Apple Music або YouTube Music (у Google Chrome чи Safari) — на вибір.
 ///  • Apple Music: назву розсилає сама macOS; обкладинка й кнопки — через дозвіл «керувати Музикою».
 ///  • YouTube Music: назву беремо із заголовка вкладки music.youtube.com (дозвіл «керувати Chrome»),
 ///    кнопки — як медіаклавіші клавіатури (дозвіл «Універсальний доступ»). Жодного JavaScript у вкладках.
@@ -9,6 +9,7 @@ import NotchCore
 final class NowPlaying: ObservableObject {
     static let musicID = "com.apple.Music"
     static let chromeID = "com.google.Chrome"
+    static let safariID = "com.apple.Safari"
     static let youtubeMusicURL = URL(string: "https://music.youtube.com/")!
 
     @Published var source: MusicSource {
@@ -134,26 +135,47 @@ final class NowPlaying: ObservableObject {
         }
     }
 
-    // MARK: YouTube Music (у Chrome)
+    // MARK: YouTube Music (у Chrome або Safari)
 
-    private let ytm = ChromeYouTubeMusic()
+    private let readers = [ChromeYouTubeMusic(browserID: chromeID), ChromeYouTubeMusic(browserID: safariID)]
+    /// Браузер, де востаннє знайшли YouTube Music (туди й ідуть кнопки).
+    @Published private(set) var youtubeBrowser = chromeID
+    private var ytm: ChromeYouTubeMusic { readers.first { $0.browserID == youtubeBrowser } ?? readers[0] }
+
+    private var runningBrowsers: [String] {
+        let running = [Self.chromeID, Self.safariID].filter(isRunning)
+        // Спершу той, де YouTube Music був минулого разу.
+        return running.sorted { a, _ in a == youtubeBrowser }
+    }
+
+    private static func appName(_ browser: String) -> String { browser == safariID ? "Safari" : "Google Chrome" }
+    /// Назва вкладки в AppleScript: у Chrome — title, у Safari — name.
+    private static func tabTitleKey(_ browser: String) -> String { browser == safariID ? "name" : "title" }
     /// Чи вдалося знайти кнопки плеєра YouTube Music (тоді показуємо ⏮ ⏯ ⏭).
     @Published private(set) var youtubeControls = false
     private var youtubeReadInFlight = false
 
     private func refreshYouTubeMusic() {
-        guard isRunning(Self.chromeID) else { clear(); youtubeControls = false; return }
+        let browsers = runningBrowsers
+        guard !browsers.isEmpty else { clear(); youtubeControls = false; return }
         guard !youtubeReadInFlight else { return }  // попереднє читання ще не закінчилось
         youtubeReadInFlight = true
-        refreshYouTubeVideoID()
         // Спершу — сам плеєр на сторінці через «Універсальний доступ».
-        let ytm = self.ytm
+        let readers = browsers.compactMap { b in self.readers.first { $0.browserID == b } }
         Task.detached(priority: .utility) {
-            let state = ytm.read()
+            let found: (browser: String, state: ChromeYouTubeMusic.State)? = {
+                for r in readers {
+                    if let st = r.read(), st.title != nil || st.isPlaying != nil { return (r.browserID, st) }
+                }
+                return nil
+            }()
             await MainActor.run {
                 self.youtubeReadInFlight = false
                 guard self.source == .youtubeMusic else { return }
-                if var state, state.title != nil || state.isPlaying != nil {
+                if let found {
+                    if self.youtubeBrowser != found.browser { self.youtubeBrowser = found.browser; self.youtubeVideoID = nil }
+                    self.refreshYouTubeVideoID()
+                    var state = found.state
                     if state.artworkURL == nil, let id = self.youtubeVideoID {
                         state.artworkURL = URL(string: "https://i.ytimg.com/vi/\(id)/hqdefault.jpg")
                     }
@@ -170,7 +192,7 @@ final class NowPlaying: ObservableObject {
                     self.loadYouTubeArtwork(state.artworkURL)
                 } else {
                     self.youtubeControls = false
-                    self.refreshYouTubeMusicByTitle()
+                    self.refreshYouTubeMusicByTitle(browsers: browsers)
                 }
             }
         }
@@ -208,9 +230,10 @@ final class NowPlaying: ObservableObject {
     private var youtubeVideoID: String?
 
     private func refreshYouTubeVideoID() {
+        let name = Self.appName(youtubeBrowser)
         run("""
-            if application "Google Chrome" is running then
-              tell application "Google Chrome"
+            if application "\(name)" is running then
+              tell application "\(name)"
                 repeat with w in windows
                   repeat with t in tabs of w
                     if URL of t contains "music.youtube.com" then return URL of t
@@ -219,7 +242,7 @@ final class NowPlaying: ObservableObject {
               end tell
             end if
             return ""
-            """, app: "Google Chrome") { [weak self] result in
+            """, app: name) { [weak self] result in
             guard let self, let s = result?.stringValue, let u = URL(string: s) else { return }
             self.youtubeVideoID = ChromeYouTubeMusic.videoID(from: u)
         }
@@ -244,25 +267,30 @@ final class NowPlaying: ObservableObject {
     }
 
     /// Запасний спосіб: заголовок вкладки (у YouTube Music там часто лише «YouTube Music»).
-    private func refreshYouTubeMusicByTitle() {
+    private func refreshYouTubeMusicByTitle(browsers: [String]) {
+        guard let browser = browsers.first else { clear(); return }
+        let name = Self.appName(browser)
         run("""
-            if application "Google Chrome" is running then
-              tell application "Google Chrome"
+            if application "\(name)" is running then
+              tell application "\(name)"
                 repeat with w in windows
                   repeat with t in tabs of w
-                    if URL of t contains "music.youtube.com" then return title of t
+                    if URL of t contains "music.youtube.com" then return \(Self.tabTitleKey(browser)) of t
                   end repeat
                 end repeat
               end tell
             end if
             return ""
-            """, app: "Google Chrome") { [weak self] result in
+            """, app: name) { [weak self] result in
             guard let self, self.source == .youtubeMusic else { return }
-            Debug.log("YouTube Music, заголовок вкладки: «\(result?.stringValue ?? "nil")»")
+            Debug.log("YouTube Music (\(name)), заголовок вкладки: «\(result?.stringValue ?? "nil")»")
             guard let raw = result?.stringValue, let parsed = YouTubeMusicTitle.parse(raw) else {
+                // У цьому браузері вкладки немає — пробуємо наступний.
+                if browsers.count > 1 { self.refreshYouTubeMusicByTitle(browsers: Array(browsers.dropFirst())); return }
                 if result != nil { self.clear() }
                 return
             }
+            self.youtubeBrowser = browser
             self.title = parsed.title
             self.artist = parsed.artist
             self.album = nil
@@ -338,17 +366,23 @@ final class NowPlaying: ObservableObject {
         }
     }
 
-    /// Перемикає Chrome на вкладку YouTube Music (або відкриває її, якщо такої немає).
+    /// Перемикає браузер на вкладку YouTube Music (або відкриває її, якщо такої немає).
     func showYouTubeMusicTab() {
-        guard isRunning(Self.chromeID) else { NSWorkspace.shared.open(Self.youtubeMusicURL); return }
+        showYouTubeMusicTab(in: runningBrowsers)
+    }
+
+    private func showYouTubeMusicTab(in browsers: [String]) {
+        guard let browser = browsers.first else { NSWorkspace.shared.open(Self.youtubeMusicURL); return }
+        let name = Self.appName(browser)
+        let select = browser == Self.safariID ? "set current tab of w to t" : "set active tab index of w to i"
         run("""
-            tell application "Google Chrome"
+            tell application "\(name)"
               repeat with w in windows
                 set i to 0
                 repeat with t in tabs of w
                   set i to i + 1
                   if URL of t contains "music.youtube.com" then
-                    set active tab index of w to i
+                    \(select)
                     set index of w to 1
                     activate
                     return "ok"
@@ -357,8 +391,10 @@ final class NowPlaying: ObservableObject {
               end repeat
             end tell
             return ""
-            """, app: "Google Chrome") { result in
-            if result?.stringValue != "ok" { NSWorkspace.shared.open(Self.youtubeMusicURL) }
+            """, app: name) { [weak self] result in
+            guard result?.stringValue != "ok" else { return }
+            if browsers.count > 1 { self?.showYouTubeMusicTab(in: Array(browsers.dropFirst())) }
+            else { NSWorkspace.shared.open(Self.youtubeMusicURL) }
         }
     }
 
@@ -374,7 +410,7 @@ final class NowPlaying: ObservableObject {
     }
 
     var sourceIcon: NSImage? {
-        let id = source == .appleMusic ? Self.musicID : Self.chromeID
+        let id = source == .appleMusic ? Self.musicID : youtubeBrowser
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else { return nil }
         return NSWorkspace.shared.icon(forFile: url.path)
     }

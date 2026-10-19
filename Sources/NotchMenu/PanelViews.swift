@@ -633,7 +633,7 @@ struct MusicWidget: View {
                 Spacer(minLength: 6)
                 if isYouTube && !player.youtubeControls {
                     PillButton(title: "До вкладки", icon: "arrow.up.forward.app") { player.showYouTubeMusicTab() }
-                        .help("Щоб бачити трек і кнопки: дозволь «Універсальний доступ» (⚙︎) і тримай вкладку YouTube Music активною у своєму вікні Chrome")
+                        .help("Щоб бачити трек і кнопки: дозволь «Універсальний доступ» (⚙︎) і тримай вкладку YouTube Music активною у своєму вікні Chrome чи Safari")
                 } else {
                     HStack(spacing: 20) {
                         controlButton("backward.fill", help: "Попередній трек") { player.previous() }
@@ -2086,7 +2086,7 @@ struct SettingsView: View {
             SettingItem(icon: "phone.down", title: "Пауза під час дзвінка", subtitle: "Telegram, Viber, WhatsApp, FaceTime зайняли мікрофон — пауза") {
                 Toggle("", isOn: $model.pauseOnCall).toggleStyle(.switch).labelsHidden().controlSize(.small)
             }
-            SettingItem(icon: "hand.raised", title: "Керування «Музикою» й Chrome", subtitle: "Якщо macOS заборонила — увімкни тут") {
+            SettingItem(icon: "hand.raised", title: "Керування «Музикою» й браузером", subtitle: "Якщо macOS заборонила — увімкни тут") {
                 Button("Відкрити") { model.nowPlaying.openPrivacySettings() }.controlSize(.small)
             }
         case "claude":

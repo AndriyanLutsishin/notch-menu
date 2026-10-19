@@ -26,7 +26,7 @@
     <key>LSUIElement</key>
     <true/>
     <key>NSAppleEventsUsageDescription</key>
-    <string>Notch Menu показує трек, обкладинку й кнопки керування для «Музики», а також назву треку з вкладки YouTube Music у Chrome.</string>
+    <string>Notch Menu показує трек, обкладинку й кнопки керування для «Музики», а також назву треку з вкладки YouTube Music у Chrome чи Safari.</string>
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>Notch Menu показує біля чубчика найближчу подію й розклад на тиждень. Лише читання.</string>
     <key>NSDownloadsFolderUsageDescription</key>

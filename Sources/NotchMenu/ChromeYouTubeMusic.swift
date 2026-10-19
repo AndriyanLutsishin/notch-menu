@@ -1,10 +1,11 @@
 import AppKit
 import ApplicationServices
+import Darwin
 import NotchCore
 
-/// Читає плеєр YouTube Music у Chrome через «Універсальний доступ» (той самий дозвіл, що й для лічильників):
+/// Читає плеєр YouTube Music у Chrome або Safari через «Універсальний доступ» (той самий дозвіл, що й для лічильників):
 /// назву, виконавця, стан і кнопки ⏮ ⏯ ⏭ — без JavaScript і без медіаклавіш.
-/// Працює, коли вкладка music.youtube.com активна у своєму вікні Chrome.
+/// Працює, коли вкладка music.youtube.com активна у своєму вікні браузера.
 final class ChromeYouTubeMusic: @unchecked Sendable {
     struct State {
         var title: String?
@@ -26,13 +27,23 @@ final class ChromeYouTubeMusic: @unchecked Sendable {
     private var enabledFor: pid_t = 0
 
     static let chromeID = "com.google.Chrome"
+    static let safariID = "com.apple.Safari"
+
+    /// Браузер, у якому шукаємо плеєр.
+    let browserID: String
+    init(browserID: String) { self.browserID = browserID }
 
     func read() -> State? {
         lock.lock(); defer { lock.unlock() }
         guard AXIsProcessTrusted(),
-              let chrome = NSRunningApplication.runningApplications(withBundleIdentifier: Self.chromeID).first else { return nil }
-        let app = AXUIElementCreateApplication(chrome.processIdentifier)
-        if enabledFor != chrome.processIdentifier {
+              let browser = NSRunningApplication.runningApplications(withBundleIdentifier: browserID).first,
+              let pid = Self.pid(of: browser) else { return nil }
+        let app = AXUIElementCreateApplication(pid)
+        if enabledFor != pid && browserID != Self.chromeID {
+            enabledFor = pid  // Safari показує вміст сторінок і без цього
+            playButton = nil
+        }
+        if enabledFor != pid {
             // Просимо Chrome показати вміст сторінок для «Універсального доступу».
             let manual = AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
             var enhanced = AXError.success
@@ -40,7 +51,7 @@ final class ChromeYouTubeMusic: @unchecked Sendable {
                 enhanced = AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
             }
             Debug.log("YT Music: увімкнення доступу до сторінок Chrome — manual \(manual.rawValue), enhanced \(enhanced.rawValue)")
-            enabledFor = chrome.processIdentifier
+            enabledFor = pid
             playButton = nil
         }
         if !isAlive(playButton) || !isAlive(titleElement) { locate(in: app) }
@@ -52,7 +63,8 @@ final class ChromeYouTubeMusic: @unchecked Sendable {
             if let title = string(w, kAXTitleAttribute), let parsed = YouTubeMusicTitle.parseWindow(title) {
                 state.title = parsed.title
                 state.artist = parsed.artist
-                state.isPlaying = parsed.playing
+                // Лише Chrome пише в заголовку «відтворюється аудіо»; у Safari стан беремо з кнопки ⏯.
+                state.isPlaying = browserID == Self.chromeID ? parsed.playing : nil
                 break
             }
         }
@@ -88,6 +100,24 @@ final class ChromeYouTubeMusic: @unchecked Sendable {
         return state
     }
 
+    /// macOS 27 інколи віддає для Safari номер процесу −1 — тоді шукаємо процес за шляхом до програми.
+    static func pid(of app: NSRunningApplication) -> pid_t? {
+        if app.processIdentifier > 0 { return app.processIdentifier }
+        guard let bundle = app.bundleURL?.resolvingSymlinksInPath().path,
+              let exe = app.executableURL?.lastPathComponent ?? app.bundleURL?.deletingPathExtension().lastPathComponent else { return nil }
+        let expected = bundle + "/Contents/MacOS/" + exe
+        var pids = [pid_t](repeating: 0, count: 4096)
+        let count = proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.size))
+        guard count > 0 else { return nil }
+        var buf = [CChar](repeating: 0, count: 4096)
+        for pid in pids.prefix(Int(count)) where pid > 0 {
+            guard proc_pidpath(pid, &buf, UInt32(buf.count)) > 0 else { continue }
+            let path = String(cString: buf)
+            if path == expected || path.hasSuffix("/" + (app.bundleURL?.lastPathComponent ?? "-") + "/Contents/MacOS/" + exe) { return pid }
+        }
+        return nil
+    }
+
     func press(_ which: String) -> Bool {
         lock.lock(); defer { lock.unlock() }
         let target: AXUIElement?
@@ -117,6 +147,14 @@ final class ChromeYouTubeMusic: @unchecked Sendable {
             if playButton != nil || titleElement != nil { return }
         }
         Debug.log("YT Music: активної вкладки music.youtube.com не знайдено (\(windows.count) вікон)")
+        if Debug.enabled, windows.isEmpty {
+            var v: CFTypeRef?
+            let w = AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &v)
+            let f = AXUIElementCopyAttributeValue(app, kAXFocusedWindowAttribute as CFString, &v)
+            let m = AXUIElementCopyAttributeValue(app, kAXMainWindowAttribute as CFString, &v)
+            let kids = children(app).map { string($0, kAXRoleAttribute) ?? "?" }
+            Debug.log("YT Music (\(browserID)): windows=\(w.rawValue) focused=\(f.rawValue) main=\(m.rawValue) діти=\(kids)")
+        }
     }
 
     private func findWebArea(_ root: AXUIElement) -> AXUIElement? {
@@ -219,6 +257,11 @@ final class ChromeYouTubeMusic: @unchecked Sendable {
                     bylineItems.append(el)
                 }
                 if thumbWrapper == nil, classes.contains("ytmusicTrackInfoThumbnailWrapper") { thumbWrapper = el }
+                // Старий рядок плеєра (так його показує Safari): назва — звичайний текст, під нею «виконавець • альбом • рік».
+                if classes.contains("ytmusic-player-bar") {
+                    if titleElement == nil, classes.contains("title") { titleElement = el }
+                    if bylineElement == nil, classes.contains("byline") { bylineElement = el }
+                }
                 if classes.contains("ytAttributedStringLink") || role == "AXLink" { links.append(el) }
                 if role == "AXImage" { images.append(el) }
                 queue.append(contentsOf: children(el))
@@ -237,7 +280,10 @@ final class ChromeYouTubeMusic: @unchecked Sendable {
                     q.append(contentsOf: children(el))
                 }
             }
-            if titleElement == nil, links.count >= 2 { titleElement = links[0]; bylineElement = links[1] }
+            // Посилання на канал — це виконавець, а не назва пісні.
+            let artistLink = links.first { self.imageURL($0)?.path.hasPrefix("/channel/") == true }
+            if bylineElement == nil, let artistLink { bylineElement = artistLink }
+            if titleElement == nil, artistLink == nil, links.count >= 2 { titleElement = links[0]; bylineElement = links[1] }
             if artworkElement == nil { artworkElement = images.first { imageURL($0).map(Self.isArtworkURL) ?? false } }
             if titleElement != nil && artworkElement != nil { return }
             container = p

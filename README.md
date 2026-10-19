@@ -12,7 +12,7 @@
 
 ## Що вміє
 
-- **Головна.** «Зараз грає» з **Apple Music** або **YouTube Music** (у Chrome) з кнопками ⏮ ⏯ ⏭. Питання до **Claude Opus / Fable** через твою підписку Claude (застосунок Claude desktop) до **Codex** через підписку ChatGPT або до **Gemini** безкоштовно (Gemini CLI з входом через Google або безкоштовний ключ з [AI Studio](https://aistudio.google.com/apikey)). Калькулятор прямо в полі: «120$ + 15%» одразу покаже суму в гривнях. Круглі кнопки Gmail, Telegram, Viber, WhatsApp із лічильниками пропущених.
+- **Головна.** «Зараз грає» з **Apple Music** або **YouTube Music** (у Chrome або Safari) з кнопками ⏮ ⏯ ⏭. Питання до **Claude Opus / Fable** через твою підписку Claude (застосунок Claude desktop), до **Codex** через підписку ChatGPT або до **Gemini** безкоштовно (Gemini CLI з входом через Google або безкоштовний ключ з [AI Studio](https://aistudio.google.com/apikey)). Калькулятор прямо в полі: «120$ + 15%» одразу покаже суму в гривнях. Круглі кнопки Gmail, Telegram, Viber, WhatsApp із лічильниками пропущених.
 - **Буфер.** Усе текстове, що ти копіював за останню годину, лише в пам'яті. На кожній картці кнопки: «Скопіювати», «Розкладка» (ghbdsn → привіт), «Перекласти / Переписати / Пояснити» з Claude, а також «розумні» кнопки: подзвонити, відкрити в Картах, відстежити ТТН Нової пошти, IBAN без пробілів. Файл, перетягнутий на чубчик, лягає на полицю; з фото й скріншотів програма розпізнає текст.
 - **Викачане.** Останні файли з «Завантажень»: відкрити, показати у Finder, перетягнути куди треба.
 - **Моно** (лише перегляд). Картки, баланс, банки з прогресом, операції, курс валют і бюджет на день.
@@ -33,7 +33,7 @@
 | Дозвіл | Навіщо |
 |---|---|
 | Універсальний доступ | лічильники пропущених із Dock, кнопки YouTube Music, ⌃⌥L «Розкладка» |
-| Керування «Музикою» / Chrome | трек, обкладинка й кнопки Apple Music, назва треку YouTube Music |
+| Керування «Музикою» / Chrome / Safari | трек, обкладинка й кнопки Apple Music, назва треку YouTube Music |
 | Календар | найближча подія й тиждень (лише читання) |
 | Папка «Завантаження» | вкладка «Викачане» (лише перегляд) |
 
@@ -66,7 +66,7 @@ scripts/build.sh release   # підпис Developer ID + перевірка Appl
 
 ## English
 
-**Notch Menu** is a free, open-source panel that slides out from under the MacBook notch (hover the notch or press **⌃⌥C**): now playing (Apple Music / YouTube Music in Chrome), ask Claude (via your own Claude subscription through the Claude desktop app) Codex (via your ChatGPT subscription) or Gemini (free, via Gemini CLI or a free AI Studio key), a 60-minute in-memory clipboard history with smart actions and OCR, recent Downloads, read-only monobank (Ukrainian bank) balance, notes and message templates, calendar, a Pomodoro timer, keep-awake, CPU temperature and memory usage. The UI is in Ukrainian.
+**Notch Menu** is a free, open-source panel that slides out from under the MacBook notch (hover the notch or press **⌃⌥C**): now playing (Apple Music / YouTube Music in Chrome or Safari), ask Claude (via your own Claude subscription through the Claude desktop app), Codex (via your ChatGPT subscription) or Gemini (free, via Gemini CLI or a free AI Studio key), a 60-minute in-memory clipboard history with smart actions and OCR, recent Downloads, read-only monobank (Ukrainian bank) balance, notes and message templates, calendar, a Pomodoro timer, keep-awake, CPU temperature and memory usage. The UI is in Ukrainian.
 
 - Requires Apple Silicon and macOS 14+. Signed with Developer ID and notarized by Apple.
 - Privacy: no telemetry; clipboard is kept in memory only (never passwords or secrets); keys live in the macOS Keychain.
