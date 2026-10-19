@@ -8,6 +8,10 @@
 |---|---|
 | ![Буфер](docs/preview-clips.png) | ![Налаштування](docs/preview-settings.png) |
 
+| Відповідь ШІ | Система |
+|---|---|
+| ![Відповідь](docs/preview-answer.png) | ![Система](docs/preview-system.png) |
+
 > 🇬🇧 English summary is [below](#english).
 
 ## Що вміє
