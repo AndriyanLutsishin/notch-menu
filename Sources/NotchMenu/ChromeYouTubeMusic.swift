@@ -345,7 +345,12 @@ final class ChromeYouTubeMusic: @unchecked Sendable {
         var q: [(AXUIElement, Int)] = children(el).map { ($0, 1) }
         while !q.isEmpty, parts.count < 6 {
             let (e, depth) = q.removeFirst()
-            if string(e, kAXRoleAttribute) == "AXStaticText", let v = string(e, kAXValueAttribute), !v.isEmpty { parts.append(v) }
+            let role = string(e, kAXRoleAttribute)
+            if role == "AXStaticText", let v = string(e, kAXValueAttribute), !v.isEmpty { parts.append(v); continue }
+            // Chrome показує виконавця й альбом як кнопки з підписом (без тексту всередині).
+            if role == "AXButton" || role == "AXLink", let t = string(e, kAXTitleAttribute), !t.isEmpty, children(e).isEmpty {
+                parts.append(t); continue
+            }
             if depth < 4 { q.append(contentsOf: children(e).map { ($0, depth + 1) }) }
         }
         let joined = parts.joined().trimmingCharacters(in: .whitespaces)

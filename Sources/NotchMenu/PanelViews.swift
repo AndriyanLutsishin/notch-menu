@@ -400,7 +400,7 @@ struct ClaudeWidget: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 4) {
-                ForEach(AskProvider.allCases) { p in
+                ForEach(model.visibleProviders) { p in
                     ProviderChip(provider: p, selected: model.provider == p) {
                         model.provider = p
                         focusSoon()
@@ -2066,8 +2066,11 @@ struct SettingsView: View {
                 }
                 Spacer(minLength: 0)
             }
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible())], spacing: 8) {
-                rows
+            // Якщо рядків більше, ніж уміщається, — гортаються.
+            ScrollView(.vertical) {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible())], spacing: 8) {
+                    rows
+                }
             }
             .frame(maxHeight: .infinity, alignment: .top)
         }
@@ -2090,6 +2093,26 @@ struct SettingsView: View {
                 Button("Відкрити") { model.nowPlaying.openPrivacySettings() }.controlSize(.small)
             }
         case "claude":
+            SettingItem(icon: "eye", title: "Показувати",
+                        subtitle: model.providerNote ?? "Які ШІ видно на головній") {
+                HStack(spacing: 3) {
+                    ForEach(AskProvider.allCases) { p in
+                        let on = !model.hiddenProviders.contains(p)
+                        Button { model.setProviderShown(p, !on) } label: {
+                            HStack(spacing: 2) {
+                                if on { Image(systemName: "checkmark").font(.system(size: 8, weight: .heavy)) }
+                                Text(p.shortTitle).font(.system(size: 10.5, weight: .semibold))
+                            }
+                            .padding(.horizontal, 6).padding(.vertical, 3)
+                            .background(Capsule().fill(on ? Palette.positive.opacity(0.85) : Palette.surface))
+                            .foregroundStyle(on ? .white : Palette.tertiary)
+                            .fixedSize()
+                        }
+                        .buttonStyle(.plain)
+                        .help(on ? "Сховати \(p.shortTitle) з головної" : "Показувати \(p.shortTitle) на головній")
+                    }
+                }
+            }
             SettingItem(icon: "sparkles", title: model.claudeViaSubscription ? "Через підписку Claude" : "Через ключ API",
                         subtitle: "Увімкни, щоб питати Opus і Fable через ключ API") {
                 Toggle("", isOn: $model.useAPIKey).toggleStyle(.switch).labelsHidden().controlSize(.small)

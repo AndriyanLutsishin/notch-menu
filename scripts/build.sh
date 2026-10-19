@@ -10,7 +10,7 @@
 set -euo pipefail
 
 ROOT="${0:A:h:h}"
-BUILD="$ROOT/build"
+BUILD="${BUILD_DIR:-$ROOT/build}"  # можна зібрати в іншу папку, напр. поки йде перевірка Apple
 CLT=/Library/Developer/CommandLineTools
 # Інструменти беремо напряму з Command Line Tools (так не заважає, якщо Xcode встановлено без прийнятої ліцензії).
 SWIFTC="$CLT/usr/bin/swiftc"

@@ -141,6 +141,27 @@ final class AppModel: ObservableObject {
         UserDefaults.standard.set(hiddenSections.map(\.rawValue), forKey: "hiddenSections")
         if s == .timer && !on { stopTimer() }
     }
+    // MARK: Які ШІ показувати на головній
+    @Published private(set) var hiddenProviders: Set<AskProvider> =
+        Set((UserDefaults.standard.stringArray(forKey: "hiddenProviders") ?? []).compactMap(AskProvider.init(rawValue:)))
+    @Published var providerNote: String?
+
+    var visibleProviders: [AskProvider] { AskProvider.allCases.filter { !hiddenProviders.contains($0) } }
+
+    func setProviderShown(_ p: AskProvider, _ on: Bool) {
+        if !on && visibleProviders == [p] {
+            providerNote = "Хоча б один ШІ має лишитися"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in self?.providerNote = nil }
+            return
+        }
+        withAnimation(Palette.spring) {
+            if on { hiddenProviders.remove(p) } else { hiddenProviders.insert(p) }
+            if hiddenProviders.contains(provider), let first = visibleProviders.first { provider = first }
+        }
+        providerNote = nil
+        UserDefaults.standard.set(hiddenProviders.map(\.rawValue), forKey: "hiddenProviders")
+    }
+
     /// Панель усюди однієї висоти — як головна (компактно, і нічого не смикається).
     static let maxPanelHeight: CGFloat = 196
 
@@ -384,7 +405,10 @@ final class AppModel: ObservableObject {
     private let session = URLSession(configuration: .ephemeral)
 
     init() {
-        provider = AskProvider(rawValue: UserDefaults.standard.string(forKey: "provider") ?? "") ?? .opus
+        let hidden = Set((UserDefaults.standard.stringArray(forKey: "hiddenProviders") ?? []).compactMap(AskProvider.init(rawValue:)))
+        let saved = AskProvider(rawValue: UserDefaults.standard.string(forKey: "provider") ?? "") ?? .opus
+        // Якщо збережений ШІ сховано — беремо перший видимий.
+        provider = hidden.contains(saved) ? (AskProvider.allCases.first { !hidden.contains($0) } ?? .opus) : saved
         hasAnthropicKey = Keychain.exists(service: SecretKind.anthropic.service)
         templates = templateStore.items
         reminders = reminderStore.sorted
