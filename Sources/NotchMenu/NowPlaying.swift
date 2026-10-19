@@ -160,40 +160,97 @@ final class NowPlaying: ObservableObject {
         guard !browsers.isEmpty else { clear(); youtubeControls = false; return }
         guard !youtubeReadInFlight else { return }  // попереднє читання ще не закінчилось
         youtubeReadInFlight = true
-        // Спершу — сам плеєр на сторінці через «Універсальний доступ».
-        let readers = browsers.compactMap { b in self.readers.first { $0.browserID == b } }
-        Task.detached(priority: .utility) {
-            let found: (browser: String, state: ChromeYouTubeMusic.State)? = {
-                for r in readers {
-                    if let st = r.read(), st.title != nil || st.isPlaying != nil { return (r.browserID, st) }
-                }
-                return nil
-            }()
-            await MainActor.run {
-                self.youtubeReadInFlight = false
-                guard self.source == .youtubeMusic else { return }
-                if let found {
-                    if self.youtubeBrowser != found.browser { self.youtubeBrowser = found.browser; self.youtubeVideoID = nil }
-                    self.refreshYouTubeVideoID()
-                    var state = found.state
-                    if state.artworkURL == nil, let id = self.youtubeVideoID {
-                        state.artworkURL = URL(string: "https://i.ytimg.com/vi/\(id)/hqdefault.jpg")
+        // 1) Назва вкладки — вона оновлюється завжди, навіть коли вкладка неактивна.
+        findYouTubeTab(in: browsers) { [weak self] tab in
+            guard let self else { return }
+            guard self.source == .youtubeMusic else { self.youtubeReadInFlight = false; return }
+            let tabTitle = tab.flatMap { YouTubeMusicTitle.parse($0.title)?.title }
+            if let tab {
+                if self.youtubeBrowser != tab.browser { self.youtubeBrowser = tab.browser }
+                self.youtubeVideoID = URL(string: tab.url).flatMap(ChromeYouTubeMusic.videoID(from:))
+            }
+            // 2) Сам плеєр на сторінці через «Універсальний доступ» — виконавець, стан, кнопки.
+            let order = tab.map { t in [t.browser] + browsers.filter { $0 != t.browser } } ?? browsers
+            let readers = order.compactMap { b in self.readers.first { $0.browserID == b } }
+            let tabBrowser = tab?.browser
+            Task.detached(priority: .utility) {
+                let found: (browser: String, state: ChromeYouTubeMusic.State)? = {
+                    for r in readers {
+                        let expected = r.browserID == tabBrowser ? tabTitle : nil
+                        if let st = r.read(expected: expected), st.title != nil || st.isPlaying != nil { return (r.browserID, st) }
                     }
-                    if state.artworkURL == nil, let t = state.title {
-                        // Chrome не віддає обкладинку міні-плеєра — шукаємо її в каталозі Apple Music за назвою.
-                        self.lookUpArtwork(title: t, artist: state.artist)
-                        state.artworkURL = self.catalogArtworkURL
+                    return nil
+                }()
+                await MainActor.run {
+                    self.youtubeReadInFlight = false
+                    guard self.source == .youtubeMusic else { return }
+                    if let found {
+                        self.youtubeBrowser = found.browser
+                        self.apply(found.state)
+                    } else if let tabTitle, let tab {
+                        // «Універсального доступу» немає — лише назва вкладки.
+                        var state = ChromeYouTubeMusic.State()
+                        state.title = tabTitle
+                        state.artist = YouTubeMusicTitle.parse(tab.title)?.artist
+                        self.apply(state)
+                    } else {
+                        self.youtubeControls = false
+                        if tab == nil { self.clear() }
                     }
-                    self.youtubeControls = state.hasButtons
-                    self.title = state.title
-                    self.artist = state.artist
-                    self.album = nil
-                    self.isPlaying = state.isPlaying
-                    self.loadYouTubeArtwork(state.artworkURL)
-                } else {
-                    self.youtubeControls = false
-                    self.refreshYouTubeMusicByTitle(browsers: browsers)
                 }
+            }
+        }
+    }
+
+    /// Виконавці, яких ми вже бачили в плеєрі (назва пісні → виконавець).
+    private var knownArtists: [String: String] = [:]
+
+    private func apply(_ found: ChromeYouTubeMusic.State) {
+        var state = found
+        if let t = state.title, let a = state.artist, !a.isEmpty { knownArtists[t] = a }
+        if state.artist == nil, let t = state.title {
+            state.artist = knownArtists[t] ?? (catalogTitle.map { ChromeYouTubeMusic.sameSong($0, t) } == true ? catalogArtist : nil)
+        }
+        if state.artworkURL == nil, let id = youtubeVideoID {
+            state.artworkURL = URL(string: "https://i.ytimg.com/vi/\(id)/hqdefault.jpg")
+        }
+        if state.artworkURL == nil, let t = state.title {
+            // Браузер не завжди віддає обкладинку — шукаємо її (і виконавця) в каталозі Apple Music за назвою.
+            lookUpArtwork(title: t, artist: state.artist)
+            state.artworkURL = catalogArtworkURL
+        }
+        youtubeControls = state.hasButtons
+        title = state.title
+        artist = state.artist
+        album = nil
+        isPlaying = state.isPlaying
+        loadYouTubeArtwork(state.artworkURL)
+    }
+
+    /// Вкладка music.youtube.com: (браузер, назва, адреса). Шукаємо по черзі в кожному браузері.
+    private func findYouTubeTab(in browsers: [String], completion: @escaping @MainActor ((browser: String, title: String, url: String)?) -> Void) {
+        guard let browser = browsers.first else { completion(nil); return }
+        let name = Self.appName(browser)
+        run("""
+            if application "\(name)" is running then
+              tell application "\(name)"
+                repeat with w in windows
+                  repeat with t in tabs of w
+                    if URL of t contains "music.youtube.com" then return (\(Self.tabTitleKey(browser)) of t) & linefeed & (URL of t)
+                  end repeat
+                end repeat
+              end tell
+            end if
+            return ""
+            """, app: name) { [weak self] result in
+            let parts = (result?.stringValue ?? "").components(separatedBy: "\n")
+            if parts.count >= 2 {
+                Debug.log("YouTube Music (\(name)), вкладка: «\(parts[0])»")
+                completion((browser, parts[0], parts[1]))
+            } else if browsers.count > 1 {
+                self?.findYouTubeTab(in: Array(browsers.dropFirst()), completion: completion)
+            } else {
+                completion(nil)
             }
         }
     }
@@ -201,6 +258,8 @@ final class NowPlaying: ObservableObject {
     private var youtubeArtworkURL: URL?
     private var catalogKey: String?
     private var catalogArtworkURL: URL?
+    private var catalogTitle: String?
+    private var catalogArtist: String?
 
     /// Відкритий каталог iTunes/Apple Music: надсилаємо лише назву треку й виконавця, без жодних інших даних.
     private func lookUpArtwork(title: String, artist: String?) {
@@ -208,6 +267,8 @@ final class NowPlaying: ObservableObject {
         guard key != catalogKey else { return }
         catalogKey = key
         catalogArtworkURL = nil
+        catalogTitle = nil
+        catalogArtist = nil
         var c = URLComponents(string: "https://itunes.apple.com/search")!
         c.queryItems = [URLQueryItem(name: "term", value: [title, artist].compactMap { $0 }.joined(separator: " ")),
                         URLQueryItem(name: "entity", value: "song"), URLQueryItem(name: "limit", value: "1")]
@@ -223,30 +284,19 @@ final class NowPlaying: ObservableObject {
             let big = URL(string: art.replacingOccurrences(of: "100x100bb", with: "600x600bb"))
             Debug.log("YT обкладинка з каталогу Apple Music: \(big?.host ?? "nil")")
             self.catalogArtworkURL = big
+            self.catalogTitle = first["trackName"] as? String
+            self.catalogArtist = first["artistName"] as? String
+            // Виконавця з каталогу показуємо, лише якщо назва пісні там та сама.
+            if self.source == .youtubeMusic, self.artist == nil, let t = self.title, let ct = self.catalogTitle,
+               ChromeYouTubeMusic.sameSong(ct, t), let a = self.catalogArtist {
+                self.artist = a
+            }
             if self.source == .youtubeMusic { self.loadYouTubeArtwork(big) }
         }
     }
     /// Ідентифікатор треку з адреси вкладки (music.youtube.com/watch?v=…), якщо відкрито повний плеєр.
     private var youtubeVideoID: String?
 
-    private func refreshYouTubeVideoID() {
-        let name = Self.appName(youtubeBrowser)
-        run("""
-            if application "\(name)" is running then
-              tell application "\(name)"
-                repeat with w in windows
-                  repeat with t in tabs of w
-                    if URL of t contains "music.youtube.com" then return URL of t
-                  end repeat
-                end repeat
-              end tell
-            end if
-            return ""
-            """, app: name) { [weak self] result in
-            guard let self, let s = result?.stringValue, let u = URL(string: s) else { return }
-            self.youtubeVideoID = ChromeYouTubeMusic.videoID(from: u)
-        }
-    }
     private let imageSession = URLSession(configuration: .ephemeral)
 
     /// Обкладинка YouTube Music — картинка з серверів Google (тих самих, звідки грає музика).
@@ -263,38 +313,6 @@ final class NowPlaying: ObservableObject {
             }
             Debug.log("YT обкладинка: є (\(url.host ?? ""))")
             self.artwork = image
-        }
-    }
-
-    /// Запасний спосіб: заголовок вкладки (у YouTube Music там часто лише «YouTube Music»).
-    private func refreshYouTubeMusicByTitle(browsers: [String]) {
-        guard let browser = browsers.first else { clear(); return }
-        let name = Self.appName(browser)
-        run("""
-            if application "\(name)" is running then
-              tell application "\(name)"
-                repeat with w in windows
-                  repeat with t in tabs of w
-                    if URL of t contains "music.youtube.com" then return \(Self.tabTitleKey(browser)) of t
-                  end repeat
-                end repeat
-              end tell
-            end if
-            return ""
-            """, app: name) { [weak self] result in
-            guard let self, self.source == .youtubeMusic else { return }
-            Debug.log("YouTube Music (\(name)), заголовок вкладки: «\(result?.stringValue ?? "nil")»")
-            guard let raw = result?.stringValue, let parsed = YouTubeMusicTitle.parse(raw) else {
-                // У цьому браузері вкладки немає — пробуємо наступний.
-                if browsers.count > 1 { self.refreshYouTubeMusicByTitle(browsers: Array(browsers.dropFirst())); return }
-                if result != nil { self.clear() }
-                return
-            }
-            self.youtubeBrowser = browser
-            self.title = parsed.title
-            self.artist = parsed.artist
-            self.album = nil
-            self.loadYouTubeArtwork(nil)  // скидаємо й адресу, щоб обкладинка повернулась при наступному читанні
         }
     }
 

@@ -33,7 +33,8 @@ final class ChromeYouTubeMusic: @unchecked Sendable {
     let browserID: String
     init(browserID: String) { self.browserID = browserID }
 
-    func read() -> State? {
+    /// `expected` — назва пісні з назви вкладки (вона оновлюється, навіть коли вкладка неактивна).
+    func read(expected: String? = nil) -> State? {
         lock.lock(); defer { lock.unlock() }
         guard AXIsProcessTrusted(),
               let browser = NSRunningApplication.runningApplications(withBundleIdentifier: browserID).first,
@@ -68,11 +69,19 @@ final class ChromeYouTubeMusic: @unchecked Sendable {
                 break
             }
         }
+        // Еталон — заголовок вікна, а якщо вкладка неактивна — назва вкладки.
+        if state.title == nil { state.title = expected }
         guard state.title != nil || playButton != nil || titleElement != nil else { return nil }
 
-        // Назва з рядка плеєра — лише якщо збігається з заголовком вікна (інакше це чужий елемент сторінки).
-        let barTitle = titleElement.flatMap(text(of:))
+        // Назва з рядка плеєра — лише якщо збігається з еталоном. Неактивна вкладка «застигає»:
+        // тоді перечитуємо плеєр, а якщо й це не допомогло — беремо назву вкладки.
+        var barTitle = titleElement.flatMap(text(of:))
         let windowTitle = state.title
+        if let w = windowTitle, let b = barTitle, !Self.sameTrack(b, w) {
+            Debug.log("YT Music: у плеєрі «\(b)», а у вкладці «\(w)» — перечитую")
+            locate(in: app)
+            barTitle = titleElement.flatMap(text(of:))
+        }
         let consistent = windowTitle == nil || barTitle == nil || Self.sameTrack(barTitle!, windowTitle!)
         if let t = barTitle, !t.isEmpty, consistent { state.title = t }
         if !consistent { state.artist = nil }
@@ -227,6 +236,15 @@ final class ChromeYouTubeMusic: @unchecked Sendable {
         }
     }
 
+    /// Строгіше порівняння (для каталогу): «Love» і «Love Story» — різні пісні, а «Falling (Remastered)» і «Falling» — та сама.
+    static func sameSong(_ a: String, _ b: String) -> Bool {
+        func base(_ s: String) -> String {
+            s.lowercased().replacingOccurrences(of: #"\s*[\(\[].*$"#, with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespaces)
+        }
+        return base(a) == base(b)
+    }
+
     /// «Falling (feat. X)» і «Falling» — той самий трек.
     static func sameTrack(_ a: String, _ b: String) -> Bool {
         let x = a.lowercased(), y = b.lowercased()
@@ -281,7 +299,10 @@ final class ChromeYouTubeMusic: @unchecked Sendable {
                 }
             }
             // Посилання на канал — це виконавець, а не назва пісні.
-            let artistLink = links.first { self.imageURL($0)?.path.hasPrefix("/channel/") == true }
+            let artistLink = links.first {
+                let path = self.imageURL($0)?.path ?? ""
+                return path.hasPrefix("/channel/") || path.hasPrefix("/browse/UC")  // сторінка виконавця
+            }
             if bylineElement == nil, let artistLink { bylineElement = artistLink }
             if titleElement == nil, artistLink == nil, links.count >= 2 { titleElement = links[0]; bylineElement = links[1] }
             if artworkElement == nil { artworkElement = images.first { imageURL($0).map(Self.isArtworkURL) ?? false } }

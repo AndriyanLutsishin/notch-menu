@@ -616,13 +616,22 @@ struct MusicWidget: View {
             cover
             VStack(alignment: .leading, spacing: 2) {
                 if player.hasTrack {
-                    Text(player.title ?? "").font(.system(size: 15, weight: .semibold)).lineLimit(2)
-                    if let album = player.album, !album.isEmpty {
-                        Text(album).font(.system(size: 13)).foregroundStyle(Palette.secondary).lineLimit(1)
+                    // Клік по назві — відкрити, де грає: вкладку YouTube Music або «Музику».
+                    Button { player.openSource() } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(player.title ?? "").font(.system(size: 15, weight: .semibold)).lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                            if let album = player.album, !album.isEmpty {
+                                Text(album).font(.system(size: 13)).foregroundStyle(Palette.secondary).lineLimit(1)
+                            }
+                            if let artist = player.artist, !artist.isEmpty {
+                                Text(artist).font(.system(size: 13)).foregroundStyle(Palette.secondary).lineLimit(1)
+                            }
+                        }
+                        .contentShape(Rectangle())
                     }
-                    if let artist = player.artist, !artist.isEmpty {
-                        Text(artist).font(.system(size: 13)).foregroundStyle(Palette.secondary).lineLimit(1)
-                    }
+                    .buttonStyle(.plain)
+                    .help(openHelp)
                 } else {
                     Text("Нічого не грає").font(.system(size: 15, weight: .semibold))
                     Button("Відкрити \(player.source.title)") { player.openSource() }
@@ -664,6 +673,10 @@ struct MusicWidget: View {
     }
 
     private var isYouTube: Bool { player.source == .youtubeMusic }
+    private var openHelp: String {
+        isYouTube ? "Відкрити вкладку YouTube Music у \(player.youtubeBrowser == NowPlaying.safariID ? "Safari" : "Chrome")"
+                  : "Відкрити «Музику»"
+    }
 
     private var cover: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -682,6 +695,9 @@ struct MusicWidget: View {
             .frame(width: 104, height: 104)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .opacity(player.hasTrack ? 1 : 0.55)
+            .contentShape(Rectangle())
+            .onTapGesture { player.openSource() }
+            .help(openHelp)
 
             // Значок джерела: клік перемикає Apple Music ⇄ YouTube Music.
             Button {
